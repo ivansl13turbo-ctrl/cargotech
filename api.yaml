@@ -1,0 +1,960 @@
+openapi: 3.0.3
+info:
+  title: Cargotech Fuel API
+  version: 0.1.0
+  description: API для работы со станциями и проливами (АЗС)
+
+servers:
+  - url: https://сargotech.fuel.ru
+    description: Local
+
+tags:
+  - name: stations
+    description: Станции (АЗС)
+  - name: fuelings
+    description: Проливы
+  - name: callbacks
+    description: Callback-эндпоинты вендоров (FuelUp → партнёр)
+
+paths:
+  /api/v1/stations:
+    get:
+      tags:
+        - stations
+      summary: Список АЗС
+      description: Список станций. Можно отфильтровать по бренду.
+      operationId: getStations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: brand
+          in: query
+          required: false
+          description: Фильтр по бренду поставщика
+          schema:
+            type: string
+            example: GPN
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Station"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/stations/{id}:
+    get:
+      tags:
+        - stations
+      summary: Информация об АЗС
+      description: Детальная информация о станции по идентификатору
+      operationId: getStationById
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Идентификатор АЗС
+          schema:
+            type: string
+          example: "cdeb1d21e5144782bc7f3e969e763646"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Station"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/stations/{id}/prices:
+    get:
+      tags:
+        - stations
+      summary: Список цен на АЗС
+      description: Карта цен по типам топлива на станции
+      operationId: getStationPrices
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Идентификатор АЗС
+          schema:
+            type: string
+          example: "cdeb1d21e5144782bc7f3e969e763646"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricesResponse"
+              example:
+                prices:
+                  ai92:
+                    value: 52.40
+                    currency: RUB
+                  ai95:
+                    value: 56.10
+                    currency: RUB
+                  diesel:
+                    value: 58.90
+                    currency: RUB
+                total: 3
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/stations/{id}/pumps:
+    get:
+      tags:
+        - stations
+      summary: Список колонок
+      description: Список колонок (пистолетов) на АЗС
+      operationId: getStationPumps
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Идентификатор АЗС
+          schema:
+            type: string
+          example: "cdeb1d21e5144782bc7f3e969e763646"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PumpsResponse"
+              example:
+                pumps:
+                  - id: "1"
+                    number: 1
+                    status: idle
+                    fuels:
+                      ai92: "АИ-92"
+                      ai95: "АИ-95"
+                  - id: "2"
+                    number: 2
+                    status: idle
+                    fuels:
+                      ai95: "АИ-95"
+                      diesel: "ДТ"
+                total: 2
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/stations/{id}/pumps/{number}:
+    get:
+      tags:
+        - stations
+      summary: Пинг колонки
+      description: Информация о колонке по номеру
+      operationId: getStationPump
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Идентификатор АЗС
+          schema:
+            type: string
+          example: "cdeb1d21e5144782bc7f3e969e763646"
+        - name: number
+          in: path
+          required: true
+          description: Номер колонки
+          schema:
+            type: string
+          example: "1"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pump"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "pump not found"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/fuelings:
+    get:
+      tags:
+        - fuelings
+      summary: Список проливов пользователя
+      description: |
+        Список проливов только указанного пользователя.
+      operationId: getFuelings
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          description: Идентификатор пользователя (владелец проливов)
+          schema:
+            type: string
+          example: "user-9272"
+        - name: page
+          in: query
+          required: false
+          description: Номер страницы
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          example: 1
+        - name: size
+          in: query
+          required: false
+          description: Размер страницы
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          example: 10
+        - name: stationId
+          in: query
+          required: false
+          description: Фильтр по станции
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FuelingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/fuelings/{id}:
+    get:
+      tags:
+        - fuelings
+      summary: Информация о проливе
+      description: |
+        Проливы
+      operationId: getFuelingById
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Идентификатор пролива
+          schema:
+            type: string
+          example: "d979d2ae-3e2d-4fa9-aeb0-02298af92fbf"
+        - name: user_id
+          in: query
+          required: true
+          description: Идентификатор пользователя (владелец пролива)
+          schema:
+            type: string
+          example: "user-9272"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Fueling"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    put:
+      tags:
+        - fuelings
+      summary: Создать пролив
+      description: |
+        Разместить пролив на АЗС.
+      operationId: createFueling
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Идентификатор пролива
+          schema:
+            type: string
+          example: "d979d2ae-3e2d-4fa9-aeb0-02298af92fbf"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFueling"
+            example:
+              user_id: "user-9272"
+              fuel: ai95
+              station: "cdeb1d21e5144782bc7f3e969e763646"
+              liters: 10.0
+              pump: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Fueling"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/fuelings/{id}/check:
+    post:
+      tags:
+        - fuelings
+      summary: Проверить пролив
+      description: |
+        Проверка перед созданием пролива (доступность станции, колонки, топлива, расчёт суммы).
+        В теле обязательно `user_id`.
+      operationId: checkFueling
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Идентификатор пролива
+          schema:
+            type: string
+          example: "d979d2ae-3e2d-4fa9-aeb0-02298af92fbf"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFueling"
+            example:
+              user_id: "user-9272"
+              fuel: ai95
+              station: "cdeb1d21e5144782bc7f3e969e763646"
+              liters: 10.0
+              pump: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Fueling"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /callbacks/sber/status:
+    post:
+      tags:
+        - callbacks
+      summary: Callback статуса заказа FuelUp (SBER)
+      description: |
+        Endpoint на стороне партнёра: FuelUp присылает статусы заказа
+        (`Created` / `Fueling` / `Completed` / `Canceled` / `Error`).
+        Аутентификация через `apikey` (query) или заголовок `X-Api-Key`
+        (ключ из ЛК FuelUp / `vendors.sber.api-key`).
+      operationId: sberOrderStatusCallback
+      parameters:
+        - name: apikey
+          in: query
+          required: false
+          description: API-ключ партнёра FuelUp
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SberOrderStatusCallback"
+            example:
+              Id: "5b5c9625-33d8-477a-939d-d8a3872f94e8"
+              Status: Completed
+              Litre: 9.85
+              Sum: 448.16
+              Price: 45.50
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Invalid API key
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: API-ключ для backend-to-backend взаимодействия
+
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "bad_request"
+            message: "Invalid fueling request"
+
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "station not found"
+
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "internal_error"
+            message: "Internal server error"
+
+  schemas:
+    Station:
+      type: object
+      description: Модель станции
+      required:
+        - id
+        - status
+        - type
+        - nozzle
+        - subnet
+        - brand
+        - name
+        - address
+        - location
+        - point
+      properties:
+        id:
+          type: string
+          description: Идентификатор станции
+          example: "cdeb1d21e5144782bc7f3e969e763646"
+        status:
+          $ref: "#/components/schemas/StationStatus"
+        type:
+          $ref: "#/components/schemas/StationType"
+        nozzle:
+          $ref: "#/components/schemas/StationNozzleMode"
+        subnet:
+          type: string
+          description: Сеть / подсеть
+          example: "Трасса"
+        brand:
+          type: string
+          description: Бренд
+          example: GPN
+        name:
+          type: string
+          description: Наименование АЗС
+          example: "ГАЗПРОМ №159"
+        address:
+          type: string
+          description: Адрес АЗС
+          example: "Ростовская область, Божковское сельское поселение"
+        location:
+          type: string
+          description: Идентификатор локации
+          example: rostov
+        timezone:
+          type: string
+          description: Таймзона (смещение)
+          default: "03"
+          example: "03"
+        point:
+          $ref: "#/components/schemas/Point"
+        fuels:
+          type: object
+          description: Типы топлива (код → локализованное имя)
+          additionalProperties:
+            type: string
+          example:
+            ai92: "АИ-92"
+            ai95: "АИ-95"
+            diesel: "ДТ"
+        services:
+          type: array
+          description: Список услуг на АЗС
+          items:
+            $ref: "#/components/schemas/GasStationService"
+          example:
+            - shop
+            - toilet
+        prices:
+          type: object
+          description: Цены по типам топлива (код → цена)
+          additionalProperties:
+            $ref: "#/components/schemas/Price"
+          example:
+            ai92:
+              value: 52.40
+              currency: RUB
+
+    PricesResponse:
+      type: object
+      description: Список цен на АЗС
+      required:
+        - prices
+        - total
+      properties:
+        prices:
+          type: object
+          description: Карта цен, ключ — тип топлива
+          additionalProperties:
+            $ref: "#/components/schemas/Price"
+        total:
+          type: integer
+          description: Количество типов топлива
+          example: 3
+
+    PumpsResponse:
+      type: object
+      description: Список колонок на АЗС
+      required:
+        - pumps
+        - total
+      properties:
+        pumps:
+          type: array
+          items:
+            $ref: "#/components/schemas/Pump"
+        total:
+          type: integer
+          description: Количество колонок
+          example: 2
+
+    Pump:
+      type: object
+      description: Колонка АЗС
+      required:
+        - id
+        - number
+        - status
+        - fuels
+      properties:
+        id:
+          type: string
+          description: Идентификатор колонки
+          example: "1"
+        number:
+          type: integer
+          format: int32
+          description: Номер колонки
+          example: 1
+        status:
+          $ref: "#/components/schemas/PumpStatus"
+        fuels:
+          type: object
+          description: Типы топлива на колонке (код → локализованное имя)
+          additionalProperties:
+            type: string
+          example:
+            ai92: "АИ-92"
+            ai95: "АИ-95"
+
+    Point:
+      type: object
+      description: Координаты точки
+      required:
+        - lat
+        - lon
+      properties:
+        lat:
+          type: number
+          format: double
+          description: Широта
+          example: 48.178869
+        lon:
+          type: number
+          format: double
+          description: Долгота
+          example: 40.265524
+
+    Price:
+      type: object
+      description: Цена за 1л топлива
+      required:
+        - value
+      properties:
+        value:
+          type: number
+          description: Цена
+          example: 52.40
+        currency:
+          type: string
+          description: Валюта
+          default: RUB
+          example: RUB
+
+    StationStatus:
+      type: string
+      description: Статус АЗС
+      enum:
+        - active
+        - disabled
+      example: active
+
+    StationType:
+      type: string
+      description: Тип АЗС
+      enum:
+        - fixed
+        - mobile
+      example: fixed
+
+    StationNozzleMode:
+      type: string
+      description: Режим снятия пистолета
+      enum:
+        - after
+        - before
+        - both
+      example: both
+
+    PumpStatus:
+      type: string
+      description: Статус колонки
+      enum:
+        - idle
+        - fueling
+        - takeoff
+        - inactive
+        - pending_payment
+      example: idle
+
+    GasStationService:
+      type: string
+      description: Услуга на АЗС
+      enum:
+        - shop
+        - cafe
+        - car_wash
+        - toilet
+      example: shop
+
+    StationMinimal:
+      type: object
+      description: Упрощённая модель станции в проливе
+      required:
+        - id
+        - type
+        - name
+        - subnet
+        - brand
+        - address
+        - location
+        - point
+      properties:
+        id:
+          type: string
+          example: "cdeb1d21e5144782bc7f3e969e763646"
+        type:
+          $ref: "#/components/schemas/StationType"
+        name:
+          type: string
+          example: "ГАЗПРОМ №159"
+        subnet:
+          type: string
+          example: ""
+        brand:
+          type: string
+          example: GPN
+        address:
+          type: string
+          example: "Ростовская область, Божковское сельское поселение"
+        location:
+          type: string
+          example: rostov
+        point:
+          $ref: "#/components/schemas/Point"
+        timezone:
+          type: string
+          example: "03"
+
+    CreateFueling:
+      type: object
+      description: Запрос на создание / проверку пролива
+      required:
+        - user_id
+        - fuel
+        - station
+        - liters
+        - pump
+      properties:
+        user_id:
+          type: string
+          description: Идентификатор пользователя, от имени которого создаётся пролив
+          example: "user-9272"
+        fuel:
+          type: string
+          description: Код топлива
+          example: ai95
+        station:
+          type: string
+          description: Идентификатор АЗС
+          example: "cdeb1d21e5144782bc7f3e969e763646"
+        liters:
+          type: number
+          format: double
+          description: Объём в литрах
+          example: 10.0
+        pump:
+          type: integer
+          format: int32
+          description: Номер колонки
+          example: 1
+
+    FuelingStructure:
+      type: object
+      description: Объём и сумма пролива
+      required:
+        - initSum
+        - initAmount
+      properties:
+        initSum:
+          type: number
+          format: double
+          description: Сумма (намерение)
+          example: 561.0
+        initAmount:
+          type: number
+          format: double
+          description: Объём в литрах (намерение)
+          example: 10.0
+        factSum:
+          type: number
+          format: double
+          description: Сумма (факт)
+          nullable: true
+          example: 538.44
+        factAmount:
+          type: number
+          format: double
+          description: Объём в литрах (факт)
+          nullable: true
+          example: 9.01
+
+    FuelingStatus:
+      type: string
+      description: Статус пролива
+      enum:
+        - check
+        - approved
+        - placed
+        - start
+        - process
+        - cancelled
+        - completed
+      example: check
+
+    Fueling:
+      type: object
+      description: Модель пролива (всегда привязан к пользователю)
+      required:
+        - id
+        - user_id
+        - status
+        - station
+        - pump
+        - fuel
+        - fuelName
+        - fuelingStructure
+        - price
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: Идентификатор пролива
+          example: "d979d2ae-3e2d-4fa9-aeb0-02298af92fbf"
+        user_id:
+          type: string
+          description: Идентификатор пользователя — владелец / создатель пролива
+          example: "user-9272"
+        status:
+          $ref: "#/components/schemas/FuelingStatus"
+        reason:
+          type: string
+          description: Причина отмены / отклонения
+          nullable: true
+          example: "Колонка занята"
+        station:
+          $ref: "#/components/schemas/StationMinimal"
+        pump:
+          type: integer
+          format: int32
+          description: Номер колонки
+          example: 1
+        fuel:
+          type: string
+          description: Код топлива
+          example: ai95
+        fuelName:
+          type: string
+          description: Наименование топлива
+          example: "АИ-95"
+        fuelingStructure:
+          $ref: "#/components/schemas/FuelingStructure"
+        price:
+          $ref: "#/components/schemas/Price"
+        createdAt:
+          type: integer
+          format: int64
+          description: Unix timestamp создания (ms)
+          example: 1711110573714
+        updatedAt:
+          type: integer
+          format: int64
+          description: Unix timestamp обновления (ms)
+          example: 1711110574436
+        finishedAt:
+          type: integer
+          format: int64
+          description: Unix timestamp завершения (ms)
+          nullable: true
+          example: 1711110574436
+
+    FuelingsResponse:
+      type: object
+      description: Список проливов
+      required:
+        - fuelings
+        - total
+        - page
+        - size
+      properties:
+        fuelings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Fueling"
+        total:
+          type: integer
+          description: Всего элементов
+          example: 13
+        page:
+          type: integer
+          description: Номер страницы
+          example: 1
+        size:
+          type: integer
+          description: Размер страницы
+          example: 10
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+    SberOrderStatusCallback:
+      type: object
+      description: Статус заказа от FuelUp (partner callback)
+      required:
+        - Id
+        - Status
+      properties:
+        Id:
+          type: string
+          description: UUID заказа (тот же, что в POST /order)
+          example: "5b5c9625-33d8-477a-939d-d8a3872f94e8"
+        Status:
+          type: string
+          enum:
+            - Created
+            - Fueling
+            - Progress
+            - Completed
+            - Canceled
+            - Cancelled
+            - Error
+          example: Completed
+        Litre:
+          type: number
+          description: Фактический объём, л
+          nullable: true
+          example: 9.85
+        Sum:
+          type: number
+          description: Фактическая сумма, ₽
+          nullable: true
+          example: 448.16
+        Price:
+          type: number
+          description: Цена за литр
+          nullable: true
+          example: 45.50
+        StationId:
+          type: string
+          nullable: true
+        ColumnId:
+          type: integer
+          nullable: true
+        FuelId:
+          type: string
+          nullable: true
+        Error:
+          type: string
+          nullable: true
+          description: Текст ошибки при Status=Error
